@@ -107,36 +107,43 @@ namespace SpiceSharp.Simulations
         /// <inheritdoc/>
         public virtual void Run(IEntityCollection entities)
         {
-            entities.ThrowIfNull(nameof(entities));
+            InitializeRun(entities);
 
-            // Setup the simulation
-            OnBeforeSetup(EventArgs.Empty);
-            Statistics.SetupTime.Start();
-            try
+            // Execute the simulation
+            Status = SimulationStatus.Running;
+            var beforeArgs = new BeforeExecuteEventArgs(false);
+            var afterArgs = new AfterExecuteEventArgs();
+            do
             {
-                Status = SimulationStatus.Setup;
-                Setup(entities);
-            }
-            finally
-            {
-                Statistics.SetupTime.Stop();
-            }
-            OnAfterSetup(EventArgs.Empty);
+                // Before execution
+                OnBeforeExecute(beforeArgs);
 
-            // Validate the input
-            OnBeforeValidation(EventArgs.Empty);
-            Statistics.ValidationTime.Start();
-            try
-            {
-                Status = SimulationStatus.Validation;
-                Validate(entities);
-            }
-            finally
-            {
-                Statistics.ValidationTime.Stop();
-            }
-            OnAfterValidation(EventArgs.Empty);
+                // Execute simulation
+                Statistics.ExecutionTime.Start();
+                try
+                {
+                    Execute();
+                }
+                finally
+                {
+                    Statistics.ExecutionTime.Stop();
+                }
 
+                // Reset
+                afterArgs.Repeat = false;
+                OnAfterExecute(afterArgs);
+
+                // We're going to repeat the simulation, change the event arguments
+                if (afterArgs.Repeat)
+                    beforeArgs = new BeforeExecuteEventArgs(true);
+            } while (afterArgs.Repeat);
+
+            DeinitializeRun();
+        }
+
+        /// <inheritdoc/>
+        public virtual void Rerun()
+        {
             // Execute the simulation
             Status = SimulationStatus.Running;
             var beforeArgs = new BeforeExecuteEventArgs(false);
@@ -183,38 +190,41 @@ namespace SpiceSharp.Simulations
             Status = SimulationStatus.None;
         }
 
-        /// <inheritdoc/>
-        public virtual void Rerun()
+        protected virtual void InitializeRun(IEntityCollection entities)
         {
-            // Execute the simulation
-            Status = SimulationStatus.Running;
-            var beforeArgs = new BeforeExecuteEventArgs(false);
-            var afterArgs = new AfterExecuteEventArgs();
-            do
+            entities.ThrowIfNull(nameof(entities));
+
+            // Setup the simulation
+            OnBeforeSetup(EventArgs.Empty);
+            Statistics.SetupTime.Start();
+            try
             {
-                // Before execution
-                OnBeforeExecute(beforeArgs);
+                Status = SimulationStatus.Setup;
+                Setup(entities);
+            }
+            finally
+            {
+                Statistics.SetupTime.Stop();
+            }
+            OnAfterSetup(EventArgs.Empty);
 
-                // Execute simulation
-                Statistics.ExecutionTime.Start();
-                try
-                {
-                    Execute();
-                }
-                finally
-                {
-                    Statistics.ExecutionTime.Stop();
-                }
+            // Validate the input
+            OnBeforeValidation(EventArgs.Empty);
+            Statistics.ValidationTime.Start();
+            try
+            {
+                Status = SimulationStatus.Validation;
+                Validate(entities);
+            }
+            finally
+            {
+                Statistics.ValidationTime.Stop();
+            }
+            OnAfterValidation(EventArgs.Empty);
+        }
 
-                // Reset
-                afterArgs.Repeat = false;
-                OnAfterExecute(afterArgs);
-
-                // We're going to repeat the simulation, change the event arguments
-                if (afterArgs.Repeat)
-                    beforeArgs = new BeforeExecuteEventArgs(true);
-            } while (afterArgs.Repeat);
-
+        protected virtual void DeinitializeRun()
+        {
             // Clean up the circuit
             OnBeforeUnsetup(EventArgs.Empty);
             Statistics.FinishTime.Start();
